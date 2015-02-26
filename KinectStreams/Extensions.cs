@@ -1,8 +1,11 @@
 ﻿using Microsoft.Kinect;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.Serialization.Json;
 using System.Text;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -271,5 +274,61 @@ namespace KinectStreams
         }
 
         #endregion
+
+        public static Body Default(this IEnumerable<Body> bodies)
+        {
+            Body result = null;
+            double closestBodyDistance = double.MaxValue;
+            foreach (var body in bodies)
+            {
+                if (body.IsTracked)
+                {
+                    var position = body.Joints[JointType.SpineBase].Position;
+                    var distance = position.Length();
+                    
+                    if (result == null || distance < closestBodyDistance)
+                    {
+                        result = body;
+                        closestBodyDistance = distance;
+                    }
+                }
+            }
+            return result;
+        }
+
+        public static double Length(this Microsoft.Kinect.CameraSpacePoint point)
+        {
+            return Math.Sqrt(
+            Math.Pow(point.X, 2) +
+            Math.Pow(point.Y, 2) +
+            Math.Pow(point.Z, 2)
+            );
+        }
+
+        public static Point ToPoint(this Microsoft.Kinect.CameraSpacePoint position, CoordinateMapper coordinateMapper)
+        {
+            Point point = new Point();
+            
+            ColorSpacePoint colorPoint = coordinateMapper.MapCameraPointToColorSpace(position);
+            point.X = float.IsInfinity(colorPoint.X) ? 0.0 : colorPoint.X;
+            point.Y = float.IsInfinity(colorPoint.Y) ? 0.0 : colorPoint.Y;            
+
+            return point;
+        }
+
+        /// <summary>
+        /// Serializes an object to JSON.
+        /// </summary>
+        /// <param name="obj">The specified object.</param>
+        /// <returns>A JSON representation of the object.</returns>
+        private static string Serialize(object obj)
+        {
+            DataContractJsonSerializer serializer = new DataContractJsonSerializer(obj.GetType());
+            using (MemoryStream ms = new MemoryStream())
+            {
+                serializer.WriteObject(ms, obj);
+                return Encoding.Default.GetString(ms.ToArray());
+            }
+        }
     }
 }

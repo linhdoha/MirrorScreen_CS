@@ -8,22 +8,6 @@ using System.Runtime.Serialization;
 
 namespace KinectStreams
 {
-    public struct CameraSpacePoint
-    {
-        public float X;
-        public float Y;
-        public float Z;
-    }
-
-    enum HandState
-    {
-        Unknown = 0,
-        NotTracked = 1,
-        Open = 2,
-        Closed = 3,
-        Lasso = 4
-    };
-
     [DataContract]
     class Skeleton
     {        
