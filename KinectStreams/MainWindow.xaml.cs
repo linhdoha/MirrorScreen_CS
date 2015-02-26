@@ -20,6 +20,7 @@ using System.Threading;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.Serialization.Json;
+using Newtonsoft.Json;
 
 namespace KinectStreams
 {
@@ -28,6 +29,19 @@ namespace KinectStreams
     /// </summary>
     public partial class MainWindow : Window
     {
+
+        public class DataReceive
+        {
+            public bool colorImage { get; set; }
+            public bool bodyIndexImage { get; set; }
+            public bool bodyData { get; set; }
+        }
+
+        public class KinectDataRequest
+        {
+            public string command { get; set; }
+            public DataReceive dataReceive { get; set; }
+        }
 
         public class StateObject
         {
@@ -148,14 +162,25 @@ namespace KinectStreams
 
                     so.sb.Clear();
                     so.sb.Append(Encoding.UTF8.GetString(so.buffer, 0, read));
-                    string command = so.sb.ToString();
-                    Console.WriteLine(command);
+                    string jsonCommand = so.sb.ToString();
+                    Console.WriteLine(jsonCommand);
+                    
+                    String fakeJSON = "{\"command\":\"requestData\",\"dataReceive\":{\"colorImage\":true,\"bodyIndexImage\":false,\"bodyData\":true}}";
+
+                    KinectDataRequest request = JsonConvert.DeserializeObject<KinectDataRequest>(fakeJSON);
+                    DataReceive listCommand = request.dataReceive;
+
                     StringBuilder newsb = so.sb;
+
                     lock (this)
                     {
-                        isSendColor = newsb.ToString().Contains("GETCOLOR");
-                        isSendBodyData = newsb.ToString().Contains("GETBODYDATA");
+                        isSendColor = listCommand.colorImage;
+                        isSendBodyIndex = listCommand.bodyIndexImage;
+                        isSendBodyData = listCommand.bodyData;
                     }
+
+                    Console.WriteLine("isSendColor:" + isSendColor + ", isSendBodyIndex:" + isSendBodyIndex + ", isSendBodyData:" + isSendBodyData);
+
                     so.sb.Clear();
                 }
             }
@@ -279,11 +304,12 @@ namespace KinectStreams
                 {
                     canvas.Children.Clear();
 
+                    int bodyCount = frame.BodyFrameSource.BodyCount;
                     _bodies = new Body[frame.BodyFrameSource.BodyCount];
 
                     frame.GetAndRefreshBodyData(_bodies);
 
-
+                    //JSONBodySerializer.Serialize(_bodies, _sensor.CoordinateMapper, Mode.Color);
 
                     foreach (var body in _bodies)
                     {
@@ -291,8 +317,7 @@ namespace KinectStreams
                         {
                             if (body.IsTracked)
                             {
-
-                                _skeletonList = new Skeleton[frame.BodyFrameSource.BodyCount];
+                                _skeletonList = new Skeleton[bodyCount];
                                 for (int i = 0; i < _skeletonList.Length; i++ )
                                 {
                                     _skeletonList[i] = new Skeleton();
@@ -324,20 +349,23 @@ namespace KinectStreams
                                 }
 
                                 _skeletonCollection = new SkeletonsDataCollection();
-                                _skeletonCollection.BodyCount = frame.BodyFrameSource.BodyCount;
+                                _skeletonCollection.BodyCount = bodyCount;
                                 _skeletonCollection.SkeletonList = _skeletonList;
                                 
                                 MemoryStream ms = new MemoryStream();
                                 js.WriteObject(ms, _skeletonCollection);
                                 ms.Position = 0;
 
+                                StreamReader sr = new StreamReader(ms);
+
                                 if (isSendBodyData) {
                                     byte[] bytes;
-                                    byte[] nullBytes = new byte[4];                                
+                                    byte[] nullBytes = new byte[4];
                                     byte[] bodyDataDirectiveBytes;
 
                                     bodyDataDirectiveBytes = Encoding.UTF8.GetBytes("+BDD");
-                                    bytes = ms.ToArray();
+                                    //bytes = ms.ToArray();
+                                    bytes = Encoding.UTF8.GetBytes(sr.ReadToEnd());
 
                                     byte[] sentData = new byte[bodyDataDirectiveBytes.Length + bytes.Length + nullBytes.Length];
                                     //bytesSize.CopyTo(sentData, 0);
@@ -347,15 +375,21 @@ namespace KinectStreams
 
                                     Console.WriteLine(bytes.Length);
                                     Console.WriteLine(sentData.Length);
-
-                                    isSendBodyData = false;
-                                    sock.BeginSend(sentData, 0, sentData.Length, 0, new AsyncCallback(SendBodyDataCallback), this);
+                                    try
+                                    {
+                                        isSendBodyData = false;
+                                        sock.BeginSend(sentData, 0, sentData.Length, 0, new AsyncCallback(SendBodyDataCallback), this);
+                                    }
+                                    catch (SocketException se)
+                                    {
+                                        Console.WriteLine(se.ToString());
+                                    }                                    
                                 }
-
-                                StreamReader sr = new StreamReader(ms);
+                                
                                 //Console.WriteLine(sr.ReadToEnd());
                                 sr.Close();
                                 ms.Close();
+                                
 
                                 //Draw skeleton.
                                 if (_displayBody)
@@ -421,6 +455,38 @@ namespace KinectStreams
 
                 }
             }
+        }
+
+        public static string EscapeStringValue(string value)
+        {
+            const char BACK_SLASH = '\\';
+            const char SLASH = '/';
+            const char DBL_QUOTE = '"';
+
+            var output = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case SLASH:
+                        output.AppendFormat("{0}{1}", BACK_SLASH, SLASH);
+                        break;
+
+                    case BACK_SLASH:
+                        output.AppendFormat("{0}{0}", BACK_SLASH);
+                        break;
+
+                    case DBL_QUOTE:
+                        output.AppendFormat("{0}{1}",BACK_SLASH,DBL_QUOTE);
+                        break;
+
+                    default:
+                        output.Append(c);
+                        break;
+                }
+            }
+
+            return output.ToString();
         }
 
         private System.Drawing.Bitmap BitmapFromSource(BitmapSource bitmapsource)

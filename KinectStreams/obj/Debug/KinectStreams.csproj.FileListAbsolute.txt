@@ -34,3 +34,6 @@ E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\KinectStre
 E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\KinectStreams.pdb
 E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\Microsoft.Kinect.dll
 E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\Microsoft.Kinect.xml
+E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\Newtonsoft.Json.dll
+E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\Newtonsoft.Json.pdb
+E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\bin\Debug\Newtonsoft.Json.xml
