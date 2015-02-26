@@ -165,9 +165,9 @@ namespace KinectStreams
                     string jsonCommand = so.sb.ToString();
                     Console.WriteLine(jsonCommand);
                     
-                    String fakeJSON = "{\"command\":\"requestData\",\"dataReceive\":{\"colorImage\":true,\"bodyIndexImage\":false,\"bodyData\":true}}";
+                    //String fakeJSON = "{\"command\":\"requestData\",\"dataReceive\":{\"colorImage\":true,\"bodyIndexImage\":false,\"bodyData\":true}}";
 
-                    KinectDataRequest request = JsonConvert.DeserializeObject<KinectDataRequest>(fakeJSON);
+                    KinectDataRequest request = JsonConvert.DeserializeObject<KinectDataRequest>(jsonCommand);
                     DataReceive listCommand = request.dataReceive;
 
                     StringBuilder newsb = so.sb;
@@ -223,36 +223,7 @@ namespace KinectStreams
         void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
             //outputEvent = e;            
-            var reference = e.FrameReference.AcquireFrame();
-            BackgroundRemovalTool bgremoval = new BackgroundRemovalTool();
-
-            //var colorFrame = reference.ColorFrameReference.AcquireFrame();
-            //var depthFrame = reference.DepthFrameReference.AcquireFrame();
-            //var bodyIndexFrame = reference.BodyIndexFrameReference.AcquireFrame();
-            
-            ////Body index
-            //if (colorFrame != null && depthFrame != null && bodyIndexFrame != null)
-            //{
-            //    //SendColor(colorFrame);
-            //    // Just one line of code :-)
-            //    //camera.Source = bgremoval.GreenScreen(colorFrame, depthFrame, bodyIndexFrame);
-            //    //camera.Source = colorFrame.ToBitmap();
-            //    colorFrame.Dispose();
-            //    depthFrame.Dispose();
-            //    bodyIndexFrame.Dispose();
-            //}
-            
-                    //if (sock.Connected)
-                    //{
-                    //    if (isSendBodyIndex)
-                    //    {
-                    //        using (MemoryStream ms = new MemoryStream())
-                    //        {
-
-                    //        }
-                    //    }
-                    //}
- 
+            var reference = e.FrameReference.AcquireFrame();                        
 
             // Color
             using (var frame = reference.ColorFrameReference.AcquireFrame())
@@ -305,101 +276,90 @@ namespace KinectStreams
                     canvas.Children.Clear();
 
                     int bodyCount = frame.BodyFrameSource.BodyCount;
+                    _skeletonCollection = new SkeletonsDataCollection();
+                    _skeletonList = new Skeleton[bodyCount];
+
                     _bodies = new Body[frame.BodyFrameSource.BodyCount];
 
                     frame.GetAndRefreshBodyData(_bodies);
 
                     //JSONBodySerializer.Serialize(_bodies, _sensor.CoordinateMapper, Mode.Color);
 
-                    foreach (var body in _bodies)
+                    for (int i = 0; i< _bodies.Count; i++)
                     {
-                        if (body != null)
+                        if (_bodies[i] != null)
                         {
-                            if (body.IsTracked)
+                            if (_bodies[i].IsTracked)
                             {
-                                _skeletonList = new Skeleton[bodyCount];
-                                for (int i = 0; i < _skeletonList.Length; i++ )
-                                {
-                                    _skeletonList[i] = new Skeleton();
-                                    _skeletonList[i].HandLeftState = body.HandLeftState;
-                                    _skeletonList[i].HandRightState = body.HandRightState;
-                                    
-                                    _skeletonList[i].LeftHandPos = new CameraSpacePoint
-                                    {
-                                        X = (float)body.Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).X,
-                                        Y = (float)body.Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).Y,
-                                        Z = body.Joints[JointType.HandLeft].Position.Z
-                                    };
-                                    _skeletonList[i].RightHandPos = new CameraSpacePoint
-                                    {
-                                        X = (float)body.Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).X,
-                                        Y = (float)body.Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).Y,
-                                        Z = body.Joints[JointType.HandLeft].Position.Z
-                                    };
-                                    
-                                    _skeletonList[i].TrackingId = body.TrackingId;
-                                    //MemoryStream ms = new MemoryStream();
-                                    //js.WriteObject(ms,_skeletonList[i]);
-
-                                    //ms.Position = 0;
-                                    //StreamReader sr = new StreamReader(ms);
-                                    //Console.WriteLine(sr.ReadToEnd());
-                                    //sr.Close();
-                                    //ms.Close();
-                                }
-
-                                _skeletonCollection = new SkeletonsDataCollection();
-                                _skeletonCollection.BodyCount = bodyCount;
-                                _skeletonCollection.SkeletonList = _skeletonList;
-                                
-                                MemoryStream ms = new MemoryStream();
-                                js.WriteObject(ms, _skeletonCollection);
-                                ms.Position = 0;
-
-                                StreamReader sr = new StreamReader(ms);
-
-                                if (isSendBodyData) {
-                                    byte[] bytes;
-                                    byte[] nullBytes = new byte[4];
-                                    byte[] bodyDataDirectiveBytes;
-
-                                    bodyDataDirectiveBytes = Encoding.UTF8.GetBytes("+BDD");
-                                    //bytes = ms.ToArray();
-                                    bytes = Encoding.UTF8.GetBytes(sr.ReadToEnd());
-
-                                    byte[] sentData = new byte[bodyDataDirectiveBytes.Length + bytes.Length + nullBytes.Length];
-                                    //bytesSize.CopyTo(sentData, 0);
-                                    bodyDataDirectiveBytes.CopyTo(sentData, 0);
-                                    bytes.CopyTo(sentData, 4);
-                                    nullBytes.CopyTo(sentData, sentData.Length - 4);
-
-                                    Console.WriteLine(bytes.Length);
-                                    Console.WriteLine(sentData.Length);
-                                    try
-                                    {
-                                        isSendBodyData = false;
-                                        sock.BeginSend(sentData, 0, sentData.Length, 0, new AsyncCallback(SendBodyDataCallback), this);
-                                    }
-                                    catch (SocketException se)
-                                    {
-                                        Console.WriteLine(se.ToString());
-                                    }                                    
-                                }
-                                
-                                //Console.WriteLine(sr.ReadToEnd());
-                                sr.Close();
-                                ms.Close();
-                                
-
                                 //Draw skeleton.
                                 if (_displayBody)
                                 {
-                                    canvas.DrawSkeleton(body);
+                                    canvas.DrawSkeleton(_bodies[i]);
                                 }
+
+                               _skeletonList[i] = new Skeleton();
+                               _skeletonList[i].HandLeftState = _bodies[i].HandLeftState;
+                               _skeletonList[i].HandRightState = _bodies[i].HandRightState;
+                               
+                               _skeletonList[i].LeftHandPos = new CameraSpacePoint
+                               {
+                                   X = (float)_bodies[i].Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).X,
+                                   Y = (float)_bodies[i].Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).Y,
+                                   Z = _bodies[i].Joints[JointType.HandLeft].Position.Z
+                               };
+                               _skeletonList[i].RightHandPos = new CameraSpacePoint
+                               {
+                                   X = (float)_bodies[i].Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).X,
+                                   Y = (float)_bodies[i].Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).Y,
+                                   Z = _bodies[i].Joints[JointType.HandLeft].Position.Z
+                               };                               
+                               _skeletonList[i].TrackingId = _bodies[i].TrackingId;
                             }
+                        }                            
+                    }
+                    
+
+                    if (isSendBodyData)
+                    {
+                        _skeletonCollection.BodyCount = bodyCount;
+                        _skeletonCollection.SkeletonList = _skeletonList;
+
+                        //MemoryStream ms = new MemoryStream();
+                        //js.WriteObject(ms, _skeletonCollection);
+                        //ms.Position = 0;
+
+                        //sr = new StreamReader(ms);
+                        byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(_skeletonCollection));
+                        byte[] nullBytes = new byte[] { 0, 0, 0, 0 };
+                        byte[] bodyDataDirectiveBytes;
+
+                        bodyDataDirectiveBytes = Encoding.UTF8.GetBytes("+BDD");
+                        //bytes = ms.ToArray();                        
+
+                        //byte[] sentData = new byte[bodyDataDirectiveBytes.Length + bytes.Length + nullBytes.Length];
+                        List<byte> sentData = new List<byte>();
+                        sentData.AddRange(bodyDataDirectiveBytes);
+                        sentData.AddRange(bytes);
+                        sentData.AddRange(nullBytes);
+
+                        Console.WriteLine(bytes.Length);
+                        Console.WriteLine(sentData.ToArray().Length);
+                        
+                        try
+                        {                                                     
+                            sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendBodyDataCallback), this);
+                        }
+
+                        catch (SocketException se)
+                        {
+                            Console.WriteLine(se.ToString());
+                        }
+                        finally
+                        {
+                            isSendBodyData = false;
                         }
                     }
-                }
+                }                    
             }
         }
 
@@ -418,7 +378,7 @@ namespace KinectStreams
                     System.Drawing.Imaging.Encoder encoder = System.Drawing.Imaging.Encoder.Quality;
                     ImageCodecInfo imgCodec = GetEncoder(ImageFormat.Jpeg);
                     EncoderParameters encoderParams = new EncoderParameters(1);
-                    EncoderParameter encoderParam = new EncoderParameter(encoder, 80L); //image quality
+                    EncoderParameter encoderParam = new EncoderParameter(encoder, 50L); //image quality
                     encoderParams.Param[0] = encoderParam;
 
                     b.Save(ms, imgCodec, encoderParams);
