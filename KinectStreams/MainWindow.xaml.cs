@@ -21,6 +21,8 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.Serialization.Json;
 using Newtonsoft.Json;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 namespace KinectStreams
 {
@@ -29,7 +31,7 @@ namespace KinectStreams
     /// </summary>
     public partial class MainWindow : Window
     {
-
+        // 2 classes to deserialize JSON commands from Flash client
         public class DataReceive
         {
             public bool colorImage { get; set; }
@@ -43,6 +45,7 @@ namespace KinectStreams
             public DataReceive dataReceive { get; set; }
         }
 
+        // Async socket state object
         public class StateObject
         {
             public Socket socket;
@@ -63,16 +66,16 @@ namespace KinectStreams
         KinectSensor _sensor;
         MultiSourceFrameReader _reader;
         IList<Body> _bodies;
-        //
-        BodyIndexFrameReader _bodyIndexReader;
 
-        bool _displayBody = false;
-
-        Stopwatch sw2;
-
+        //       
+        bool _displayBody = true;
+        
+        //Body data
         Skeleton[] _skeletonList;
         SkeletonsDataCollection _skeletonCollection;
-        
+
+        static BlockingCollection<byte[]> buffer = new BlockingCollection<byte[]>();
+
         #endregion
 
         #region Constructor
@@ -88,15 +91,16 @@ namespace KinectStreams
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            sw2 = new Stopwatch();
+            
             _sensor = KinectSensor.GetDefault();
+            //_sensor.ColorFrameSource
 
             if (_sensor != null)
             {
                 _sensor.Open();
 
                 _reader = _sensor.OpenMultiSourceFrameReader(FrameSourceTypes.Color | FrameSourceTypes.Depth | FrameSourceTypes.Infrared | FrameSourceTypes.Body | FrameSourceTypes.BodyIndex);
-                _bodyIndexReader = _sensor.BodyIndexFrameSource.OpenReader();
+                //_bodyIndexReader = _sensor.BodyIndexFrameSource.OpenReader();
                 _reader.MultiSourceFrameArrived += Reader_MultiSourceFrameArrived;
             }
 
@@ -123,7 +127,10 @@ namespace KinectStreams
                 sock.Bind(ipEnd);
                 sock.Listen(1000);
             }
-            //sock.SendBufferSize = 10000;
+
+            
+
+            //sock.SendBufferSize = 10000;            
         }
 
         private void AcceptCallback(IAsyncResult ar)
@@ -132,7 +139,7 @@ namespace KinectStreams
             {
                 StateObject so = (StateObject)ar.AsyncState;
 
-                so.socket = so.socket.EndAccept(ar);
+                so.socket = so.socket.EndAccept(ar);                
                 sock = so.socket;
                 so.socket.BeginReceive(so.buffer, 0, so.buffer.Length, 0, new AsyncCallback(ReceivedOrder), so);
                 Console.WriteLine(so.socket.RemoteEndPoint.AddressFamily + " connected");
@@ -151,7 +158,8 @@ namespace KinectStreams
             try
             {
                 int read = so.socket.EndReceive(ar);
-                so.socket.BeginReceive(so.buffer, 0, so.buffer.Length, 0, new AsyncCallback(ReceivedOrder), so);                
+                so.socket.BeginReceive(so.buffer, 0, so.buffer.Length, 0, new AsyncCallback(ReceivedOrder), so);        
+        
                 if (read == 0)
                 {
                     so.socket.Shutdown(SocketShutdown.Both);                    
@@ -186,7 +194,7 @@ namespace KinectStreams
             }
             catch (SocketException se)
             {
-                Console.WriteLine(se.ToString());
+                Console.WriteLine(se.ToString() + "\n Error Code:" + se.ErrorCode);
                 IPEndPoint ipEnd = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 7001);
                 
                 so.socket = new Socket(ipEnd.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -220,7 +228,7 @@ namespace KinectStreams
             }
         }
 
-        void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
+        async void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
             //outputEvent = e;            
             var reference = e.FrameReference.AcquireFrame();                        
@@ -229,7 +237,7 @@ namespace KinectStreams
             using (var frame = reference.ColorFrameReference.AcquireFrame())
             {
                 if (frame != null)
-                {
+                {                 
                     if (_mode == Mode.Color)
                     {
                         camera.Source = frame.ToBitmap();
@@ -237,7 +245,10 @@ namespace KinectStreams
 
                     if (sock.Connected)
                     {
-                        SendColor(frame);
+                        if (isSendColor)
+                        {
+                            SendColor(frame);
+                        }                        
                     }
                 }
             }
@@ -266,9 +277,7 @@ namespace KinectStreams
             //    }
             //}
 
-            // Body
-            DataContractJsonSerializer js = new DataContractJsonSerializer(typeof(Skeleton));            
-
+            // Body       
             using (var frame = reference.BodyFrameReference.AcquireFrame())
             {
                 if (frame != null)
@@ -283,7 +292,11 @@ namespace KinectStreams
 
                     frame.GetAndRefreshBodyData(_bodies);
 
-                    //JSONBodySerializer.Serialize(_bodies, _sensor.CoordinateMapper, Mode.Color);
+                    List<Body> _bodyList = _bodies.ToList<Body>();
+
+                    String _bodiesJSON =_bodyList.Serialize(_sensor.CoordinateMapper, Mode.Color);
+
+                    //Console.WriteLine(_bodiesJSON);
 
                     for (int i = 0; i< _bodies.Count; i++)
                     {
@@ -324,12 +337,8 @@ namespace KinectStreams
                         _skeletonCollection.BodyCount = bodyCount;
                         _skeletonCollection.SkeletonList = _skeletonList;
 
-                        //MemoryStream ms = new MemoryStream();
-                        //js.WriteObject(ms, _skeletonCollection);
-                        //ms.Position = 0;
-
-                        //sr = new StreamReader(ms);
-                        byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(_skeletonCollection));
+                        //byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(_skeletonCollection));
+                        byte[] bytes = Encoding.UTF8.GetBytes(_bodiesJSON);
                         byte[] nullBytes = new byte[] { 0, 0, 0, 0 };
                         byte[] bodyDataDirectiveBytes;
 
@@ -346,8 +355,14 @@ namespace KinectStreams
                         Console.WriteLine(sentData.ToArray().Length);
                         
                         try
-                        {                                                     
-                            sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendBodyDataCallback), this);
+                        {
+                            //lock (this)
+                            //{
+                                //sock.Send(sentData.ToArray(),sentData.Count,new SocketFlags());
+                                sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendBodyDataCallback), this);
+                                
+                                //buffer.Add(sentData.ToArray());
+                            //}                            
                         }
 
                         catch (SocketException se)
@@ -364,89 +379,70 @@ namespace KinectStreams
         }
 
         private void SendColor(ColorFrame frame) {
-            if (isSendColor)
-            {
-                using (MemoryStream ms = new MemoryStream())
+            using (MemoryStream ms = new MemoryStream())
+            {               
+                //convert color frame to bitmap
+                Bitmap bitmap = BitmapFromSource((BitmapSource)frame.ToBitmap(1280, 720));
+                Bitmap b = new Bitmap(bitmap);
+                bitmap.Dispose();
+
+                System.Drawing.Imaging.Encoder encoder = System.Drawing.Imaging.Encoder.Quality;
+                ImageCodecInfo imgCodec = GetEncoder(ImageFormat.Jpeg);
+                EncoderParameters encoderParams = new EncoderParameters(1);
+                EncoderParameter encoderParam = new EncoderParameter(encoder, 50L); //image quality
+                encoderParams.Param[0] = encoderParam;
+
+                b.Save(ms, imgCodec, encoderParams);                             
+
+                //prepare for sending color frame
+                //byte[] bytesSize;
+                byte[] bytes;
+                byte[] nullBytes = new byte[4];
+                byte[] colorDirectiveBytes;
+
+                bytes = ms.ToArray();
+                //bytesSize = BitConverter.GetBytes(bytes.Length);
+                colorDirectiveBytes = Encoding.UTF8.GetBytes("+CLR");
+
+                //byte[] sentData = new byte[colorDirectiveBytes.Length + bytes.Length + nullBytes.Length];
+                ////bytesSize.CopyTo(sentData, 0);
+                //colorDirectiveBytes.CopyTo(sentData, 0);
+                //bytes.CopyTo(sentData, 4);
+                //nullBytes.CopyTo(sentData, sentData.Length - 4);
+
+                List<byte> sentData = new List<byte>();
+                sentData.AddRange(colorDirectiveBytes);
+                sentData.AddRange(bytes);
+                sentData.AddRange(nullBytes);
+
+                Console.WriteLine(bytes.Length);
+                Console.WriteLine(sentData.ToArray().Length);                
+
+                try
                 {
-                    Stopwatch sw = new Stopwatch();
-                    sw.Start();
-                    //convert color frame to bitmap
-                    Bitmap bitmap = BitmapFromSource((BitmapSource)frame.ToBitmap(1280, 720));
-                    Bitmap b = new Bitmap(bitmap);
-                    bitmap.Dispose();
-
-                    System.Drawing.Imaging.Encoder encoder = System.Drawing.Imaging.Encoder.Quality;
-                    ImageCodecInfo imgCodec = GetEncoder(ImageFormat.Jpeg);
-                    EncoderParameters encoderParams = new EncoderParameters(1);
-                    EncoderParameter encoderParam = new EncoderParameter(encoder, 50L); //image quality
-                    encoderParams.Param[0] = encoderParam;
-
-                    b.Save(ms, imgCodec, encoderParams);
-                    sw.Stop();
-
-                    Console.WriteLine("encode time: " + sw.ElapsedMilliseconds + " ms");
-
-                    sw2.Start();
-
-                    //prepare for sending color frame
-                    //byte[] bytesSize;
-                    byte[] bytes;
-                    byte[] nullBytes = new byte[4];
-                    byte[] colorDirectiveBytes;
-
-                    bytes = ms.ToArray();
-                    //bytesSize = BitConverter.GetBytes(bytes.Length);
-                    colorDirectiveBytes = Encoding.UTF8.GetBytes("+CLR");
-
-                    byte[] sentData = new byte[colorDirectiveBytes.Length + bytes.Length + nullBytes.Length];
-                    //bytesSize.CopyTo(sentData, 0);
-                    colorDirectiveBytes.CopyTo(sentData, 0);
-                    bytes.CopyTo(sentData, 4);
-                    nullBytes.CopyTo(sentData, sentData.Length - 4);
-
-                    Console.WriteLine(bytes.Length);
-                    Console.WriteLine(sentData.Length);
-
-                    lock (this)
-                    {
-                        isSendColor = false;
-                        sock.BeginSend(sentData, 0, sentData.Length, 0, new AsyncCallback(SendImgCallback), this);
-                    }
-
+                    //lock (this)
+                    //{
+                    //sock.Send(sentData.ToArray(), sentData.Count, new SocketFlags());
+                    
+                        sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendImgCallback), this);                    
+                        //buffer.Add(sentData);
+                    //}
+                    
+                }
+                catch (SocketException se)
+                {
+                    Console.WriteLine(se.ToString() + "err code: "+se.ErrorCode);
+                }
+                finally
+                {
+                    isSendColor = false;
                 }
             }
         }
 
-        public static string EscapeStringValue(string value)
+        private void SendBodyData(BodyFrame frame)
         {
-            const char BACK_SLASH = '\\';
-            const char SLASH = '/';
-            const char DBL_QUOTE = '"';
 
-            var output = new StringBuilder(value.Length);
-            foreach (char c in value)
-            {
-                switch (c)
-                {
-                    case SLASH:
-                        output.AppendFormat("{0}{1}", BACK_SLASH, SLASH);
-                        break;
-
-                    case BACK_SLASH:
-                        output.AppendFormat("{0}{0}", BACK_SLASH);
-                        break;
-
-                    case DBL_QUOTE:
-                        output.AppendFormat("{0}{1}",BACK_SLASH,DBL_QUOTE);
-                        break;
-
-                    default:
-                        output.Append(c);
-                        break;
-                }
-            }
-
-            return output.ToString();
         }
 
         private System.Drawing.Bitmap BitmapFromSource(BitmapSource bitmapsource)
@@ -464,16 +460,14 @@ namespace KinectStreams
 
         private void SendImgCallback(IAsyncResult ar)
         {
-            Console.WriteLine("Send Color completed");
-
-            sw2.Stop();
-            Console.WriteLine("send time: " + sw2.ElapsedMilliseconds + " ms");
-            sw2.Reset();
+            Console.WriteLine("Send Color completed");            
+            sock.EndSend(ar);            
         }
 
         private void SendBodyDataCallback(IAsyncResult ar)
-        {
+        {            
             Console.WriteLine("Send Body data completed");
+            sock.EndSend(ar);                        
         }
 
         private void Color_Click(object sender, RoutedEventArgs e)
@@ -509,7 +503,6 @@ namespace KinectStreams
 
         private ImageCodecInfo GetEncoder(ImageFormat format)
         {
-
             ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
 
             foreach (ImageCodecInfo codec in codecs)
@@ -520,6 +513,12 @@ namespace KinectStreams
                 }
             }
             return null;
+        }
+
+        public Task<int> SendAsync(Socket socket, byte[] buffer, int offset, int size, SocketFlags flags)
+        {
+            var result = socket.BeginSend(buffer, offset, size, flags, _ => { }, socket);
+            return Task.Factory.FromAsync(result, (r) => socket.EndSend(r));
         }
     }
 
