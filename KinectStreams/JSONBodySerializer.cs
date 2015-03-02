@@ -37,10 +37,14 @@ namespace KinectStreams
         {
             [DataMember(Name = "name")]
             public string Name { get; set; }
-            [DataMember(Name = "x")]
+            [DataMember(Name = "X")]
             public double X { get; set; }
-            [DataMember(Name = "y")]
+            [DataMember(Name = "Y")]
             public double Y { get; set; }
+            [DataMember(Name = "mappedX")]
+            public double mappedX { get; set; }
+            [DataMember(Name = "mappedY")]
+            public double mappedY { get; set; }
             [DataMember(Name = "z")]
             public double Z { get; set; }
         }
@@ -79,8 +83,10 @@ namespace KinectStreams
                         jsonSkeleton.Joints.Add(new JSONJoint
                         {
                             Name = joint.Key.ToString().ToLower(),
-                            X = point.X,
-                            Y = point.Y,
+                            X = joint.Value.Position.X,
+                            Y = joint.Value.Position.Y,
+                            mappedX = point.X,
+                            mappedY = point.Y,
                             Z = joint.Value.Position.Z
                         });
                     }
