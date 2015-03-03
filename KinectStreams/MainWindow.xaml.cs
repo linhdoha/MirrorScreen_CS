@@ -155,11 +155,16 @@ namespace KinectStreams
             isSendColor = false;
             StateObject so = (StateObject)ar.AsyncState;
 
+            DataReceive listCommand;
+
             try
             {
                 int read = so.socket.EndReceive(ar);
-                so.socket.BeginReceive(so.buffer, 0, so.buffer.Length, 0, new AsyncCallback(ReceivedOrder), so);        
-        
+                lock (this)
+                {
+                    so.socket.BeginReceive(so.buffer, 0, so.buffer.Length, 0, new AsyncCallback(ReceivedOrder), so);
+                }
+                        
                 if (read == 0)
                 {
                     so.socket.Shutdown(SocketShutdown.Both);                    
@@ -176,7 +181,7 @@ namespace KinectStreams
                     //String fakeJSON = "{\"command\":\"requestData\",\"dataReceive\":{\"colorImage\":true,\"bodyIndexImage\":false,\"bodyData\":true}}";
 
                     KinectDataRequest request = JsonConvert.DeserializeObject<KinectDataRequest>(jsonCommand);
-                    DataReceive listCommand = request.dataReceive;
+                    listCommand = request.dataReceive;
 
                     StringBuilder newsb = so.sb;
 
@@ -228,7 +233,7 @@ namespace KinectStreams
             }
         }
 
-        async void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
+        void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
             //outputEvent = e;            
             var reference = e.FrameReference.AcquireFrame();                        
@@ -292,9 +297,9 @@ namespace KinectStreams
 
                     frame.GetAndRefreshBodyData(_bodies);
 
-                    List<Body> _bodyList = _bodies.ToList<Body>();
+                    //List<Body> _bodyList = _bodies.ToList<Body>();
 
-                    String _bodiesJSON =_bodyList.Serialize(_sensor.CoordinateMapper, Mode.Color);
+                    //String _bodiesJSON =_bodyList.Serialize(_sensor.CoordinateMapper, Mode.Color);
 
                     //Console.WriteLine(_bodiesJSON);
 
@@ -337,8 +342,8 @@ namespace KinectStreams
                         _skeletonCollection.BodyCount = bodyCount;
                         _skeletonCollection.SkeletonList = _skeletonList;
 
-                        //byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(_skeletonCollection));
-                        byte[] bytes = Encoding.UTF8.GetBytes(_bodiesJSON);
+                        byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(_skeletonCollection));
+                        //byte[] bytes = Encoding.UTF8.GetBytes(_bodiesJSON);
                         byte[] nullBytes = new byte[] { 0, 0, 0, 0 };
                         byte[] bodyDataDirectiveBytes;
 
@@ -356,13 +361,13 @@ namespace KinectStreams
                         
                         try
                         {
-                            //lock (this)
-                            //{
+                            lock (this)
+                            {
                                 //sock.Send(sentData.ToArray(),sentData.Count,new SocketFlags());
                                 sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendBodyDataCallback), this);
                                 
                                 //buffer.Add(sentData.ToArray());
-                            //}                            
+                            }                            
                         }
 
                         catch (SocketException se)
@@ -404,27 +409,27 @@ namespace KinectStreams
                 //bytesSize = BitConverter.GetBytes(bytes.Length);
                 colorDirectiveBytes = Encoding.UTF8.GetBytes("+CLR");
 
-                //byte[] sentData = new byte[colorDirectiveBytes.Length + bytes.Length + nullBytes.Length];
-                ////bytesSize.CopyTo(sentData, 0);
-                //colorDirectiveBytes.CopyTo(sentData, 0);
-                //bytes.CopyTo(sentData, 4);
-                //nullBytes.CopyTo(sentData, sentData.Length - 4);
+                byte[] sentData = new byte[colorDirectiveBytes.Length + bytes.Length + nullBytes.Length];
+                //bytesSize.CopyTo(sentData, 0);
+                colorDirectiveBytes.CopyTo(sentData, 0);
+                bytes.CopyTo(sentData, 4);
+                nullBytes.CopyTo(sentData, sentData.Length - 4);
 
-                List<byte> sentData = new List<byte>();
-                sentData.AddRange(colorDirectiveBytes);
-                sentData.AddRange(bytes);
-                sentData.AddRange(nullBytes);
+                //List<byte> sentData = new List<byte>();
+                //sentData.AddRange(colorDirectiveBytes);
+                //sentData.AddRange(bytes);
+                //sentData.AddRange(nullBytes);
 
-                Console.WriteLine(bytes.Length);
-                Console.WriteLine(sentData.ToArray().Length);                
+                //Console.WriteLine(bytes.Length);
+                //Console.WriteLine(sentData.ToArray().Length);                
 
                 try
                 {
                     //lock (this)
                     //{
-                    //sock.Send(sentData.ToArray(), sentData.Count, new SocketFlags());
+                    sock.Send(sentData, sentData.Length, 0);
                     
-                        sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendImgCallback), this);                    
+                        //sock.BeginSend(sentData.ToArray(), 0, sentData.Count, 0, new AsyncCallback(SendImgCallback), this);                    
                         //buffer.Add(sentData);
                     //}
                     
@@ -461,13 +466,13 @@ namespace KinectStreams
         private void SendImgCallback(IAsyncResult ar)
         {
             Console.WriteLine("Send Color completed");            
-            sock.EndSend(ar);            
+            //sock.EndSend(ar);
         }
 
         private void SendBodyDataCallback(IAsyncResult ar)
         {            
             Console.WriteLine("Send Body data completed");
-            sock.EndSend(ar);                        
+            //sock.EndSend(ar);                        
         }
 
         private void Color_Click(object sender, RoutedEventArgs e)
