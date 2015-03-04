@@ -4,16 +4,16 @@
 winexe
 C#
 .cs
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\obj\Debug\
+E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\obj\Release\
 KinectStreams
 none
 false
-DEBUG;TRACE
+TRACE
 E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectStreams\App.xaml
 11151548125
 
-14-1825732630
-171433241883
+101995889320
+171682714960
 MainWindow.xaml;
 
 False

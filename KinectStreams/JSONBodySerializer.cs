@@ -23,6 +23,8 @@ namespace KinectStreams
         [DataContract]
         class JSONSkeleton
         {
+            [DataMember(Name = "command")]
+            public string command { get; set; }
             [DataMember(Name = "trackingID")]
             public string trackingID { get; set; }
             [DataMember(Name = "handLeftState")]
@@ -57,6 +59,7 @@ namespace KinectStreams
                 JSONSkeleton jsonSkeleton = new JSONSkeleton();
                 if (skeleton.IsTracked)
                 {
+                    jsonSkeleton.command = "bodyData";
                     jsonSkeleton.trackingID = skeleton.TrackingId.ToString();
                     jsonSkeleton.Joints = new List<JSONJoint>();
                     jsonSkeleton.HandLeftState = skeleton.HandLeftState;
