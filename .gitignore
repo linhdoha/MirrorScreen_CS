@@ -38,5 +38,7 @@ Thumbs.db
 
 # Folder #
 ##########
-KinectStreams\bin
-KinectStreams\obj
+KinectStreams/bin/*
+KinectStreams/obj/*
+KinectServerConsole/bin/*
+KinectServerConsole/obj/*

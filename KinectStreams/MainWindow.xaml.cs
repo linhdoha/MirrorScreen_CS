@@ -117,7 +117,7 @@ namespace KinectStreams
                 //so.socket = new Socket(ipEnd.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
                 
                 so.socket.Bind(ipEnd);
-                so.socket.Listen(1000);
+                so.socket.Listen(1);
                 so.socket.SendBufferSize = 524288;
                 
 
@@ -136,7 +136,7 @@ namespace KinectStreams
                 sock.Close();
 
                 sock.Bind(ipEnd);
-                sock.Listen(1000);
+                sock.Listen(1);
             }        
         }
 
@@ -215,7 +215,7 @@ namespace KinectStreams
                 
                 so.socket = new Socket(ipEnd.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 so.socket.Bind(ipEnd);
-                so.socket.Listen(1000);
+                so.socket.Listen(1);
 
                 so.socket.BeginAccept(new AsyncCallback(AcceptCallback), so);
                 sock = so.socket;
