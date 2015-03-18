@@ -1,9 +1,0 @@
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\KinectServerConsole.exe.config
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\obj\Release\KinectServerConsole.csprojResolveAssemblyReference.cache
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\KinectServerConsole.exe
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\KinectServerConsole.pdb
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\Microsoft.Kinect.dll
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\Newtonsoft.Json.dll
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\bin\Release\Microsoft.Kinect.xml
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\obj\Release\KinectServerConsole.exe
-E:\Stuffs\MirrorScreenProject\MirrorScreen_CS\KinectServerConsole\obj\Release\KinectServerConsole.pdb
