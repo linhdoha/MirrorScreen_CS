@@ -46,6 +46,8 @@ namespace KinectServerConsole
         private static Socket serverSocket;
         private static Socket handlerSocket;
 
+        private static List<GestureDetector> gestureDetectorList = null;
+
         private class StateObject
         {
             public Socket socket;
@@ -370,41 +372,41 @@ namespace KinectServerConsole
         static void mnuExit_Click(object sender, EventArgs e)
         {
             notificationIcon.Dispose();
-            //Application.ExitThread();
+            Application.ExitThread();
             Application.Exit();            
         }   
 
         static void Main(string[] args)
         {
-            //Thread notifyThread = new Thread(
-            //    delegate()
-            //    {
-            //        menu = new ContextMenu();
-            //        mnuExit = new MenuItem("Exit");
-            //        menu.MenuItems.Add(0, mnuExit);
+            Thread notifyThread = new Thread(
+                delegate()
+                {
+                    menu = new ContextMenu();
+                    mnuExit = new MenuItem("Exit");
+                    menu.MenuItems.Add(0, mnuExit);
 
-            //        notificationIcon = new NotifyIcon()
-            //        {
-            //            Icon = Properties.Resources.kinectIcon,
-            //            ContextMenu = menu,
-            //            Text = "Kinect Server"
-            //        };
-            //        mnuExit.Click += new EventHandler(mnuExit_Click);
+                    notificationIcon = new NotifyIcon()
+                    {
+                        Icon = Properties.Resources.kinectIcon,
+                        ContextMenu = menu,
+                        Text = "Kinect Server"
+                    };
+                    mnuExit.Click += new EventHandler(mnuExit_Click);
 
-            //        notificationIcon.Visible = true;
+                    notificationIcon.Visible = true;
 
-            //        Application.ApplicationExit += Application_ApplicationExit;
+                    Application.ApplicationExit += Application_ApplicationExit;
 
-            //        Application.Run();
-            //    }
-            //);
+                    Application.Run();
+                }
+            );
 
-            //notifyThread.IsBackground = true;
-            //notifyThread.Start();
+            notifyThread.IsBackground = true;
+            notifyThread.Start();
             
             //----------------------------------------
-            using (var cc = new ConsoleCopy("server_log.txt"))
-            {
+            //using (var cc = new ConsoleCopy("server_log.txt"))
+            //{
                 StartKinect();
                 Start();
 
@@ -439,7 +441,7 @@ namespace KinectServerConsole
 
                 Thread.Sleep(500);
             }
-        }
+        //}
 
         public enum Mode
         {
