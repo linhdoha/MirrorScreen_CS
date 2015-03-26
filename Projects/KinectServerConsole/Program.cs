@@ -19,6 +19,8 @@ namespace KinectServerConsole
         public bool colorImage { get; set; }
         public bool bodyIndexImage { get; set; }
         public bool bodyData { get; set; }
+        //public string databasePath { get; set; }
+        //public string gestureName { get; set; }
     }
 
     public class KinectDataRequest
@@ -42,7 +44,9 @@ namespace KinectServerConsole
 
         private static object serverLock = new object();
 
-        private static int port = 7001;
+        const int DEFAULT_PORT = 7001;
+        private static int port;
+        
         private static Socket serverSocket;
         private static Socket handlerSocket;
 
@@ -58,9 +62,9 @@ namespace KinectServerConsole
         private static List<StateObject> connections = new List<StateObject>();
 
 
-        private static void SetupServerSocket()
+        private static void SetupServerSocket(int inputPort)
         {
-            IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), port);
+            IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), inputPort);
 
             // Create the socket, bind it, and start listening
             serverSocket = new Socket(AddressFamily.InterNetwork,
@@ -71,12 +75,12 @@ namespace KinectServerConsole
             serverSocket.Listen(1);
         }
 
-        public static void Start()
+        public static void Start(int inputPort)
         {
             Console.Write("Starting server... ");
             try
             {
-                SetupServerSocket();
+                SetupServerSocket(inputPort);
                 //for (int i = 0; i < 10; i++)
                 //{
                     ContinueListen(serverSocket);
@@ -136,15 +140,17 @@ namespace KinectServerConsole
             //isSendBodyIndex = false;
             isSendBodyData = false;
 
-            DataReceive listCommand;
-            KinectDataRequest request;
+            //DataReceive listCommand;
+            //KinectDataRequest request;
+            dynamic listCommand;
+            dynamic request;
 
             StateObject connection = (StateObject)result.AsyncState;
             try
             {
                 //connection.socket.BeginReceive(connection.buffer, 0, connection.buffer.Length, SocketFlags.None, new AsyncCallback(ReceiveCallback), connection);
                 int bytesRead = connection.socket.EndReceive(result);
-                Console.WriteLine("Byte read = " + bytesRead);
+                //Console.WriteLine("Byte read = " + bytesRead);
                 if (0 != bytesRead)
                 {
                     lock (connections)
@@ -160,7 +166,7 @@ namespace KinectServerConsole
                         isSendBodyIndex = listCommand.bodyIndexImage;
                         isSendBodyData = listCommand.bodyData;
                     }
-                    Console.WriteLine("======> request received [isSendBodyData: " + isSendBodyData+"]");
+                    //Console.WriteLine("======> request received [isSendBodyData: " + isSendBodyData+"]");
                     //Console.WriteLine();
                     connection.stringBuilder.Clear();
                     //lock (connections)
@@ -211,8 +217,7 @@ namespace KinectServerConsole
             }
         }
         static void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
-        {
-            //outputEvent = e;            
+        {       
             var reference = e.FrameReference.AcquireFrame();
 
             // Body       
@@ -230,35 +235,6 @@ namespace KinectServerConsole
 
                     List<Body> _bodyList = _bodies.ToList<Body>();                   
                     String _bodiesJSON = _bodyList.Serialize(_sensor.CoordinateMapper, Mode.Color);
-
-                    //Console.WriteLine(_bodiesJSON);
-
-                    //for (int i = 0; i < _bodies.Count; i++)
-                    //{
-                    //    if (_bodies[i] != null)
-                    //    {
-                    //        if (_bodies[i].IsTracked)
-                    //        {
-                    //            _skeletonList[i] = new Skeleton();
-                    //            _skeletonList[i].HandLeftState = _bodies[i].HandLeftState;
-                    //            _skeletonList[i].HandRightState = _bodies[i].HandRightState;
-
-                    //            _skeletonList[i].LeftHandPos = new CameraSpacePoint
-                    //            {
-                    //                X = (float)_bodies[i].Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).X,
-                    //                Y = (float)_bodies[i].Joints[JointType.HandLeft].Position.ToPoint(_sensor.CoordinateMapper).Y,
-                    //                Z = _bodies[i].Joints[JointType.HandLeft].Position.Z
-                    //            };
-                    //            _skeletonList[i].RightHandPos = new CameraSpacePoint
-                    //            {
-                    //                X = (float)_bodies[i].Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).X,
-                    //                Y = (float)_bodies[i].Joints[JointType.HandRight].Position.ToPoint(_sensor.CoordinateMapper).Y,
-                    //                Z = _bodies[i].Joints[JointType.HandRight].Position.Z
-                    //            };
-                    //            _skeletonList[i].TrackingId = _bodies[i].TrackingId;
-                    //        }
-                    //    }
-                    //}
 
                     if (isSendBodyData)
                     {
@@ -279,16 +255,7 @@ namespace KinectServerConsole
                         bytes.CopyTo(sentData, 4);
                         nullBytes.CopyTo(sentData, sentData.Length - 4);
 
-                        File.WriteAllBytes("body_byte.txt", sentData);
-
-                        //byte[] sentData = new byte[bodyDataDirectiveBytes.Length + bytes.Length + nullBytes.Length];
-                        //List<byte> sentData = new List<byte>();
-                        //sentData.AddRange(bodyDataDirectiveBytes);
-                        //sentData.AddRange(bytes);
-                        //sentData.AddRange(nullBytes);
-
-                        //Console.WriteLine(bytes.Length);
-                        //Console.WriteLine(sentData.ToArray().Length);
+                        //File.WriteAllBytes("body_byte.txt", sentData);
 
                         handlerSocket = connections[0].socket;
 
@@ -316,7 +283,7 @@ namespace KinectServerConsole
                         }
                         else
                         {
-                            Console.WriteLine("Not connected");
+                            //Console.WriteLine("Not connected");
                         }
                     }
                 }
@@ -325,7 +292,7 @@ namespace KinectServerConsole
 
         private static void SendBodyDataCallback(IAsyncResult ar)
         {
-            Console.WriteLine("Send Body data completed. [isSendBodyData: " + isSendBodyData + "]");
+            //Console.WriteLine("Send Body data completed. [isSendBodyData: " + isSendBodyData + "]");
             try
             {
                 handlerSocket.EndSend(ar);
@@ -340,75 +307,59 @@ namespace KinectServerConsole
             }
         }
 
-        public static ManualResetEvent allDone = new ManualResetEvent(false);
-
-        public static ContextMenu menu;
-        public static MenuItem mnuExit;
-        public static NotifyIcon notificationIcon;
-
-        static void Application_ApplicationExit(object sender, EventArgs e)
+        static void WarningInvalidArgs(string arg)
         {
-            lock (connections)
-            {
-                for (int i = connections.Count - 1; i >= 0; i--)
-                {
-                    CloseConnection(connections[i]);
-                }
-            }
-
-            if (_reader != null)
-            {
-                _reader.Dispose();
-            }
-
-            if (_sensor != null)
-            {
-                _sensor.Close();
-            }
-
-            System.Diagnostics.Process.GetCurrentProcess().Kill();
+            Console.WriteLine();
+            Console.WriteLine("Invalid port: " + arg);
+            Console.WriteLine();
+            Console.WriteLine("     Usage: KinectServerConsole.exe <port_number>");
+            Console.WriteLine();
+            Console.WriteLine("Port " + DEFAULT_PORT + " is used if no argument is provided.");
         }
 
-        static void mnuExit_Click(object sender, EventArgs e)
-        {
-            notificationIcon.Dispose();
-            Application.ExitThread();
-            Application.Exit();            
-        }   
-
+        public static ManualResetEvent allDone = new ManualResetEvent(false);
+        
         static void Main(string[] args)
-        {
-            Thread notifyThread = new Thread(
-                delegate()
-                {
-                    menu = new ContextMenu();
-                    mnuExit = new MenuItem("Exit");
-                    menu.MenuItems.Add(0, mnuExit);
-
-                    notificationIcon = new NotifyIcon()
-                    {
-                        Icon = Properties.Resources.kinectIcon,
-                        ContextMenu = menu,
-                        Text = "Kinect Server"
-                    };
-                    mnuExit.Click += new EventHandler(mnuExit_Click);
-
-                    notificationIcon.Visible = true;
-
-                    Application.ApplicationExit += Application_ApplicationExit;
-
-                    Application.Run();
-                }
-            );
-
-            notifyThread.IsBackground = true;
-            notifyThread.Start();
-            
-            //----------------------------------------
+        {           
             //using (var cc = new ConsoleCopy("server_log.txt"))
             //{
+                if (args == null || args.Length == 0)
+                {
+                    port = DEFAULT_PORT;
+                }
+                else if (args.Length != 1)
+                {
+                    Console.WriteLine("Only 1 argument is acceptable.");
+                    Console.WriteLine();
+                    Console.WriteLine("     Usage: KinectServerConsole.exe <port_number>");
+                    return;
+                }
+                else
+                {
+                    int portNum;
+                    bool isNumber = Int32.TryParse(args[0], out portNum);
+
+                    if (isNumber)
+                    {
+                        if (portNum >= 1024 && portNum <= 49151)
+                        {
+                            port = portNum;
+                        }
+                        else
+                        {
+                            WarningInvalidArgs(args[0]);
+                            return;
+                        }                        
+                    }
+                    else
+                    {
+                        WarningInvalidArgs(args[0]);
+                        return;
+                    }
+                }
+
                 StartKinect();
-                Start();
+                Start(port);
 
                 string line = "";
                 while (line != "exit")
@@ -451,6 +402,7 @@ namespace KinectServerConsole
         }
     }
 
+    // Console output to file
     class ConsoleCopy : IDisposable
     {
 
