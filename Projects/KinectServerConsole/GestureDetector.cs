@@ -1,20 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Kinect;
 using Microsoft.Kinect.VisualGestureBuilder;
+using System.IO;
 
 namespace KinectServerConsole
 {
     class GestureDetector : IDisposable
     {
-        // Path to the gesture database
-        private string databasePath;
+        private readonly object lockObj = new object();
 
-        /// Name of the gesture in the database
-        private string gestureName;
+        // Path to the gesture database
+        private string[] databasePaths;
+
+        private int bodyIndex;
 
         /// <summary> Gesture frame source which should be tied to a body tracking ID </summary>
         private VisualGestureBuilderFrameSource vgbFrameSource = null;
@@ -22,35 +22,57 @@ namespace KinectServerConsole
         /// <summary> Gesture frame reader which will handle gesture events coming from the sensor </summary>
         private VisualGestureBuilderFrameReader vgbFrameReader = null;
 
-        public GestureResult GestureResult { get; private set; }
+        public List<GestureResult> GestureResults { get; private set; }
 
-        public GestureDetector(KinectSensor sensor, GestureResult gestureResult, string databasePath, string gestureName)
+        public GestureDetector(int bodyIndex, KinectSensor sensor, List<GestureResult> gestureResults, string[] databasePaths)
         {
             if (sensor == null)
             {
                 throw new ArgumentNullException("kinectSensor");
             }
 
-            this.databasePath = databasePath;
-            this.gestureName = gestureName;
-            this.GestureResult = gestureResult;
+            this.databasePaths = databasePaths;
+            this.GestureResults = gestureResults;
+            this.bodyIndex = bodyIndex;
 
-            // create the vgb source. The associated body tracking ID will be set when a valid body frame arrives from the sensor.
-            this.vgbFrameSource = new VisualGestureBuilderFrameSource(sensor, 0);
-            this.vgbFrameSource.TrackingIdLost += this.Source_TrackingIdLost;
-
-            // open the reader for the vgb frames
-            this.vgbFrameReader = this.vgbFrameSource.OpenReader();
-            if (this.vgbFrameReader != null)
+            lock (lockObj)
             {
-                this.vgbFrameReader.IsPaused = true;
-                this.vgbFrameReader.FrameArrived += this.Reader_GestureFrameArrived;
+                // create the vgb source. The associated body tracking ID will be set when a valid body frame arrives from the sensor.
+                this.vgbFrameSource = new VisualGestureBuilderFrameSource(sensor, 0);
+                this.vgbFrameSource.TrackingIdLost += this.Source_TrackingIdLost;
+     
+                // open the reader for the vgb frames
+                this.vgbFrameReader = this.vgbFrameSource.OpenReader();
+                if (this.vgbFrameReader != null)
+                {
+                    this.vgbFrameReader.IsPaused = true;
+                    this.vgbFrameReader.FrameArrived += this.Reader_GestureFrameArrived;
+                }
+            addGesturesToResults();
             }
+        }
 
-            using (VisualGestureBuilderDatabase database = new VisualGestureBuilderDatabase(this.databasePath))
+        public void addGesturesToResults()
+        {
+            String currentPath = Path.GetDirectoryName(new Uri(System.Reflection.Assembly.GetExecutingAssembly().CodeBase).LocalPath);
+
+            if (databasePaths != null && databasePaths.Length != 0)
             {
-                vgbFrameSource.AddGestures(database.AvailableGestures);
-            }
+                foreach (string databasePath in databasePaths)
+                {
+                    String realDatabasePath = Path.Combine(currentPath, databasePath);
+
+                    using (VisualGestureBuilderDatabase database = new VisualGestureBuilderDatabase(realDatabasePath))
+                    {
+                        vgbFrameSource.AddGestures(database.AvailableGestures);
+                    }
+                }
+
+                foreach (var gesture in vgbFrameSource.Gestures)
+                {
+                    GestureResults.Add(new GestureResult(bodyIndex, gesture.Name, false, false, 0.0f));
+                }
+            }   
         }
 
         /// <summary>
@@ -128,25 +150,50 @@ namespace KinectServerConsole
 
         private void Reader_GestureFrameArrived(object sender, VisualGestureBuilderFrameArrivedEventArgs e)
         {
+            
             VisualGestureBuilderFrameReference frameReference = e.FrameReference;
-            using (VisualGestureBuilderFrame frame = frameReference.AcquireFrame())
+            lock (GestureResults)
             {
-                if (frame != null)
+                using (VisualGestureBuilderFrame frame = frameReference.AcquireFrame())
                 {
-                    IReadOnlyDictionary<Gesture, DiscreteGestureResult> discreteResults = frame.DiscreteGestureResults;
-
-                    if (discreteResults != null)
+                    if (frame != null)
                     {
-                        foreach (Gesture gesture in this.vgbFrameSource.Gestures)
-                        {
-                            if (gesture.Name.Equals(this.gestureName) && gesture.GestureType == GestureType.Discrete)
-                            {
-                                DiscreteGestureResult result = null;
-                                discreteResults.TryGetValue(gesture, out result);
+                        IReadOnlyDictionary<Gesture, DiscreteGestureResult> discreteResults = frame.DiscreteGestureResults;
 
-                                if (result != null)
+                        if (discreteResults != null)
+                        {
+                            foreach (Gesture gesture in this.vgbFrameSource.Gestures)
+                            {
+                                if (gesture.GestureType == GestureType.Discrete)
                                 {
-                                    this.GestureResult.UpdateGestureResult(true, result.Detected, result.Confidence);
+                                    DiscreteGestureResult result = null;
+                                    discreteResults.TryGetValue(gesture, out result);
+
+                                    if (result != null)
+                                    {
+                                        GestureResult gr = GestureResults.FirstOrDefault(n => n.Name == gesture.Name);
+                                        gr.UpdateGestureResult(gesture.Name, true, result.Detected, result.Confidence);
+                                    }
+                                }
+                            }
+                        }
+
+                        IReadOnlyDictionary<Gesture, ContinuousGestureResult> continuousResults = frame.ContinuousGestureResults;
+
+                        if (continuousResults != null)
+                        {
+                            foreach (Gesture gesture in this.vgbFrameSource.Gestures)
+                            {
+                                if (gesture.GestureType == GestureType.Continuous)
+                                {
+                                    ContinuousGestureResult result = null;
+                                    continuousResults.TryGetValue(gesture, out result);
+
+                                    if (result != null)
+                                    {
+                                        GestureResult gr = GestureResults.FirstOrDefault(n => n.Name == gesture.Name);
+                                        gr.UpdateGestureResult(gesture.Name, true, true, result.Progress);
+                                    }
                                 }
                             }
                         }
@@ -155,9 +202,40 @@ namespace KinectServerConsole
             }
         }
 
+        /// <summary>
+        /// Handles the TrackingIdLost event for the VisualGestureBuilderSource object
+        /// </summary>
+        /// <param name="sender">object sending the event</param>
+        /// <param name="e">event arguments</param>
         private void Source_TrackingIdLost(object sender, TrackingIdLostEventArgs e)
         {
-            this.GestureResult.UpdateGestureResult(false, false, 0.0f);
+            lock (lockObj)
+            {
+                foreach (var gesture in GestureResults)
+                {
+                    gesture.UpdateGestureResult("", false, false, 0.0f);
+                }
+            }            
+        }
+
+        public void UpdateGestureDetector(string[] databasePaths)
+        {
+            if (databasePaths != null)
+            {
+                databasePaths = this.databasePaths;
+                GestureResults.Clear();
+                addGesturesToResults();
+            }            
+        }
+
+        public override string ToString()
+        {
+            string result = "\nResult:\n";
+            foreach (var gesture in GestureResults)
+            {
+                result += gesture.Name + " | Detected: " + gesture.Detected + " | Confidence: " + gesture.Confidence + "\n";
+            }
+            return result;
         }
     }
 }

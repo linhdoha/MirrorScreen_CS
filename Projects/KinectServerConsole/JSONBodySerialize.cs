@@ -12,59 +12,69 @@ using Newtonsoft.Json;
 
 namespace KinectServerConsole
 {
-    public static class JSONBodySerializer
+    [DataContract]
+    public class JSONGesture
     {
+        [DataMember(Name = "name")]
+        public string Name { get; set; }
+        [DataMember(Name = "progress")]
+        public float Confidence { get; set; }
+    }
+
+    [DataContract]
+    public class JSONBody
+    {
+        [DataMember(Name = "trackingID")]
+        public string trackingID { get; set; }
+        [DataMember(Name = "handLeftState")]
+        public HandState HandLeftState { get; set; }
+        [DataMember(Name = "handRightState")]
+        public HandState HandRightState { get; set; }
+        [DataMember(Name = "gesture")]
+        public List<JSONGesture> Gestures { get; set; }
+        [DataMember(Name = "joints")]
+        public List<JSONJoint> Joints { get; set; }
+    }
+
+    [DataContract]
+    public class JSONJoint
+    {
+        [DataMember(Name = "name")]
+        public string Name { get; set; }
+        [DataMember(Name = "X")]
+        public double X { get; set; }
+        [DataMember(Name = "Y")]
+        public double Y { get; set; }
+        [DataMember(Name = "mappedX")]
+        public double mappedX { get; set; }
+        [DataMember(Name = "mappedY")]
+        public double mappedY { get; set; }
+        [DataMember(Name = "z")]
+        public double Z { get; set; }
+    }
+    public class JSONBodySerialize
+    {
+        public JSONBodyCollection jsonSkeletons { get; set; }
+
         [DataContract]
-        class JSONBodyCollection
+        public class JSONBodyCollection
         {
             [DataMember(Name = "command")]
             public string command { get; set; }
             [DataMember(Name = "bodies")]
             public List<JSONBody> Bodies { get; set; }
         }
-        [DataContract]
-        class JSONBody
+
+
+
+        public JSONBodySerialize()
         {
-            [DataMember(Name = "trackingID")]
-            public string trackingID { get; set; }
-            [DataMember(Name = "handLeftState")]
-            public HandState HandLeftState { get; set; }
-            [DataMember(Name = "handRightState")]
-            public HandState HandRightState { get; set; }
-            [DataMember(Name = "joints")]
-            public List<JSONJoint> Joints { get; set; }
-            [DataMember(Name = "gesture")]
-            public List<JSONGesture> Gestures { get; set; }
-        }
-        [DataContract]
-        class JSONJoint
-        {
-            [DataMember(Name = "name")]
-            public string Name { get; set; }
-            [DataMember(Name = "X")]
-            public double X { get; set; }
-            [DataMember(Name = "Y")]
-            public double Y { get; set; }
-            [DataMember(Name = "mappedX")]
-            public double mappedX { get; set; }
-            [DataMember(Name = "mappedY")]
-            public double mappedY { get; set; }
-            [DataMember(Name = "z")]
-            public double Z { get; set; }
+            jsonSkeletons = new JSONBodyCollection { Bodies = new List<JSONBody>() };
         }
 
-        [DataContract]
-        class JSONGesture
+        public void PopulateBodies(List<Body> bodies, CoordinateMapper mapper, Mode mode)
         {
-            [DataMember(Name = "name")]
-            public string Name { get; set; }
-            [DataMember(Name = "progress")]
-            public float Confidence { get; set; }
-        }
-
-        public static string Serialize(this List<Body> bodies, KinectSensor sensor, CoordinateMapper mapper, Mode mode)
-        {
-            List<GestureDetector> gestureDetectorList = new List<GestureDetector>();
+            //List<GestureDetector> gestureDetectorList = new List<GestureDetector>();
 
             // create gesture detector for each body
             int bodyCount = bodies.Count;
@@ -78,13 +88,11 @@ namespace KinectServerConsole
             //    GestureDetector detector = new GestureDetector(sensor, result, database, "Wave_Left");
             //    gestureDetectorList.Add(detector);
             //}
-
-            JSONBodyCollection jsonSkeletons = new JSONBodyCollection { Bodies = new List<JSONBody>() };
             jsonSkeletons.command = "bodyData";
 
             for (int i = 0; i < bodyCount; ++i)
             {
-                JSONBody jsonSkeleton = new JSONBody();
+                JSONBody jsonBody = new JSONBody();
                 if (bodies[i].IsTracked)
                 {
                     ulong trackingId = bodies[i].TrackingId;
@@ -95,11 +103,11 @@ namespace KinectServerConsole
                     //    gestureDetectorList[i].IsPaused = (trackingId == 0);
                     //}
 
-                    jsonSkeleton.trackingID = bodies[i].TrackingId.ToString();
-                    jsonSkeleton.Joints = new List<JSONJoint>();
-                    jsonSkeleton.HandLeftState = bodies[i].HandLeftState;
-                    jsonSkeleton.HandRightState = bodies[i].HandRightState;
-                    //jsonSkeleton.Gestures = new List<JSONGesture>();
+                    jsonBody.trackingID = bodies[i].TrackingId.ToString();
+                    jsonBody.Joints = new List<JSONJoint>();
+                    jsonBody.HandLeftState = bodies[i].HandLeftState;
+                    jsonBody.HandRightState = bodies[i].HandRightState;
+                    jsonBody.Gestures = new List<JSONGesture>();
 
                     //if (gestureDetectorList[i].GestureResult.Detected)
                     //{
@@ -129,7 +137,7 @@ namespace KinectServerConsole
                                 break;
                         }
 
-                        jsonSkeleton.Joints.Add(new JSONJoint
+                        jsonBody.Joints.Add(new JSONJoint
                         {
                             Name = joint.Key.ToString().ToLower(),
                             X = joint.Value.Position.X,
@@ -139,10 +147,13 @@ namespace KinectServerConsole
                             Z = joint.Value.Position.Z
                         });
                     }
-                    jsonSkeletons.Bodies.Add(jsonSkeleton);
+                    jsonSkeletons.Bodies.Add(jsonBody);
                 }              
             }
+        }
+        public string Serialize()
+        {
             return JsonConvert.SerializeObject(jsonSkeletons);
-        }       
+        }
     }
 }

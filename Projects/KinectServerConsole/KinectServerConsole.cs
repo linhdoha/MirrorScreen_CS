@@ -1,37 +1,42 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Net.Sockets;
-using System.Net;
-using System.Threading;
-using Microsoft.Kinect;
+﻿using Microsoft.Kinect;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Windows.Forms;
-using System.Drawing;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using Microsoft.CSharp.RuntimeBinder;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace KinectServerConsole
 {
-    //// 2 classes to deserialize JSON commands from Flash client
-    //public class CommandList
-    //{
-    //    public bool colorImage { get; set; }
-    //    public bool bodyIndexImage { get; set; }
-    //    public bool bodyData { get; set; }
-    //}
-
-    //public class KinectDataRequest
-    //{
-    //    public string command { get; set; }
-    //    public CommandList dataReceive { get; set; }
-    //    public string[] gestureDatabase { get; set; }
-    //}
-
-    public class Program
+    class KinectServerConsole
     {
+        // 2 classes to deserialize JSON commands from Flash client
+        public class CommandList
+        {
+            public bool colorImage { get; set; }
+            public bool bodyIndexImage { get; set; }
+            public bool bodyData { get; set; }
+        }
+
+        public class KinectDataRequest
+        {
+            public string command { get; set; }
+            public CommandList dataReceive { get; set; }
+            public string[] gestureDatabase { get; set; }
+        }
+
+        private class StateObject
+        {
+            public Socket socket;
+            public byte[] buffer;
+            public StringBuilder stringBuilder = new StringBuilder();
+        }
+
         #region Constants
 
         const int DEFAULT_PORT = 7001;
@@ -40,44 +45,59 @@ namespace KinectServerConsole
 
         #endregion
 
-        //#region Variable
+        #region Variable
 
-        //static bool hasDetector;
-        //static bool isReceiving = false;
+        private bool hasDetector;
+        private bool isReceiving = false;
 
-        //static bool isSendColor = false;
-        //static bool isSendBodyIndex = false;
-        //static bool isSendBodyData = false;
-        //static string[] gestureDatabase = {};
+        private bool isSendColor = false;
+        private bool isSendBodyIndex = false;
+        private bool isSendBodyData = false;
+        private string[] gestureDatabase = { };
 
-        //static KinectSensor _sensor;
-        //static MultiSourceFrameReader _reader;
-        //static IList<Body> _bodies;
+        private KinectSensor _sensor;
+        private MultiSourceFrameReader _reader;
+        private IList<Body> _bodies;
 
-        //static Skeleton[] _skeletonList;
-        //static SkeletonsDataCollection _skeletonCollection;
+        private Skeleton[] _skeletonList;
+        private SkeletonsDataCollection _skeletonCollection;
 
-        //private static object serverLock = new object();
+        private object serverLock = new object();
 
-        private static int serverPort;
-        private static bool debugFlag = false;
-        
-        //private static Socket serverSocket;
-        //private static Socket handlerSocket;
+        private int serverPort;
+        private bool debugFlag = false;
 
-        //private static List<GestureDetector> gestureDetectorList = null;
-        //private static List<StateObject> connections = new List<StateObject>();
+        private Socket serverSocket;
+        private Socket handlerSocket;
 
-        //#endregion
-        /*
-        private class StateObject
+        private List<GestureDetector> gestureDetectorList = null;
+        private List<StateObject> connections = new List<StateObject>();
+
+        #endregion
+
+        public ManualResetEvent allDone = new ManualResetEvent(false);
+
+        public KinectServerConsole(int serverPort, bool debugFlag)
         {
-            public Socket socket;
-            public byte[] buffer;
-            public StringBuilder stringBuilder = new StringBuilder();
+            // Some boilerplate to react to close window event
+            _handler += new EventHandler(Handler);
+            SetConsoleCtrlHandler(_handler, true);
+
+            this.serverPort = serverPort;
+            this.debugFlag = debugFlag;
+
+            StartServer(this.serverPort);
+            StartKinect();
+
+            while (true)
+            {
+                allDone.Reset();
+                ContinueListen(serverSocket);
+                allDone.WaitOne();
+            }
         }
 
-        private static void SetupServerSocket(int inputPort)
+        private void SetupServerSocket(int inputPort)
         {
             IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), inputPort);
 
@@ -103,11 +123,11 @@ namespace KinectServerConsole
 
         }
 
-        public static void StartServer(int inputPort)
+        public void StartServer(int inputPort)
         {
             hasDetector = false;
 
-            Console.WriteLine("Starting server... ");            
+            Console.WriteLine("Starting server... ");
             try
             {
                 SetupServerSocket(inputPort);
@@ -115,10 +135,10 @@ namespace KinectServerConsole
             }
             catch (Exception e)
             {
-                Console.WriteLine(ERROR_SYMBOL + "Fail. Can not listen at " + port);
+                Console.WriteLine(ERROR_SYMBOL + "Fail. Can not listen at " + serverPort);
                 Console.WriteLine(e);
             }
-            Console.WriteLine("Done. Listening for flash at port " + port);
+            Console.WriteLine("Done. Listening for flash at port " + serverPort);
 
             if (debugFlag)
             {
@@ -126,7 +146,7 @@ namespace KinectServerConsole
             }
         }
 
-        private static void ContinueListen(Socket socket)
+        private void ContinueListen(Socket socket)
         {
             try
             {
@@ -139,8 +159,8 @@ namespace KinectServerConsole
             }
         }
 
-        private static void AcceptCallback(IAsyncResult result)
-        {                        
+        private void AcceptCallback(IAsyncResult result)
+        {
             StateObject connection = new StateObject();
             try
             {
@@ -155,7 +175,7 @@ namespace KinectServerConsole
                 //Console.WriteLine(DEBUG_SYMBOL + "New connection from " + s);
 
                 // Start Receive
-                connection.socket.BeginReceive(connection.buffer, 0, connection.buffer.Length, SocketFlags.None, 
+                connection.socket.BeginReceive(connection.buffer, 0, connection.buffer.Length, SocketFlags.None,
                     new AsyncCallback(ReceiveCallback), connection);
                 allDone.Set();
                 // Start new Accept
@@ -173,7 +193,7 @@ namespace KinectServerConsole
             }
         }
 
-        private static void ReceiveCallback(IAsyncResult result)
+        private void ReceiveCallback(IAsyncResult result)
         {
             isReceiving = true;
             //isSendColor = false;
@@ -211,7 +231,7 @@ namespace KinectServerConsole
                         isSendColor = commandList.colorImage;
                         isSendBodyIndex = commandList.bodyIndexImage;
                         isSendBodyData = commandList.bodyData;
-                        
+
                         WriteDebug("Request received [isSendBodyData: " + isSendBodyData + "]");
                         WriteDebug("Request received [gestureDatabase: " + ConvertStringArrayToStringJoin(gestureDatabase) + "]");
                         //Console.WriteLine(DEBUG_SYMBOL + "Request received [isSendBodyData: " + isSendBodyData+"]");               
@@ -229,11 +249,11 @@ namespace KinectServerConsole
             }
 
             catch (SocketException)
-            {                
+            {
                 CloseConnection(connection);
             }
             catch (Exception)
-            {                
+            {
                 CloseConnection(connection);
             }
 
@@ -266,16 +286,16 @@ namespace KinectServerConsole
             }
         }
 
-        private static void CloseConnection(StateObject ci)
+        private void CloseConnection(StateObject ci)
         {
             if (ci.socket != null)
             {
                 ci.socket.Close();
-            }            
+            }
             lock (connections) connections.Remove(ci);
         }
 
-        public static void StartKinect()
+        public void StartKinect()
         {
             _sensor = KinectSensor.GetDefault();
 
@@ -287,10 +307,10 @@ namespace KinectServerConsole
                 _reader.MultiSourceFrameArrived += Reader_MultiSourceFrameArrived;
             }
 
-            gestureDetectorList = new List<GestureDetector>();             
+            gestureDetectorList = new List<GestureDetector>();
         }
 
-        static void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
+        void Reader_MultiSourceFrameArrived(object sender, MultiSourceFrameArrivedEventArgs e)
         {
             bool hasGesture = false;
 
@@ -314,31 +334,37 @@ namespace KinectServerConsole
                     List<Body> _bodyList = _bodies.ToList<Body>();
 
                     JSONBodySerialize jsonBS = new JSONBodySerialize();
-                    
+
                     jsonBS.PopulateBodies(_bodyList, _sensor.CoordinateMapper, Mode.Color);
 
                     if (isReceiving)
                     {
-                        if (jsonBS.jsonSkeletons.Bodies.Count > 0)
+                        lock (serverLock)
                         {
-                            for (int i = 0; i < jsonBS.jsonSkeletons.Bodies.Count; i++)
+                            if (jsonBS.jsonSkeletons.Bodies.Count > 0)
                             {
-                                foreach (var gesture in gestureDetectorList[i].GestureResults)
+                                for (int i = 0; i < bodyCount; i++)
                                 {
-                                    if (gesture.Detected)
+                                    foreach (var gesture in gestureDetectorList[i].GestureResults)
                                     {
-                                        hasGesture = true;
-                                        jsonBS.jsonSkeletons.Bodies[i].Gestures.Add(new JSONGesture
+                                        if (gesture.Detected)
                                         {
-                                            Name = gesture.Name,
-                                            Confidence = gesture.Confidence
-                                        });
+                                            ulong trackingId = gestureDetectorList[i].TrackingId;
+                                            hasGesture = true;
+                                            JSONBody jsBD = jsonBS.jsonSkeletons.Bodies.FirstOrDefault(n => n.trackingID == trackingId.ToString());
+                                            jsBD.Gestures.Add(new JSONGesture
+                                            {
+                                                Name = gesture.Name,
+                                                Confidence = gesture.Confidence
+                                            });
+                                        }
                                     }
                                 }
                             }
-                        } 
+                        }
+
                     }
-                   
+
                     string _bodiesJSON = jsonBS.Serialize();
                     //string _bodiesJSON = _bodyList.Serialize(_sensor, _sensor.CoordinateMapper, Mode.Color);
 
@@ -408,8 +434,7 @@ namespace KinectServerConsole
                             ulong trackingId = body.TrackingId;
 
                             //WriteDebug("BodyIndex = " + i + " | TrackingId = " + trackingId + gestureDetectorList[i]);
-                            Console.WriteLine("BodyIndex = " + i + " | TrackingId = " + trackingId + gestureDetectorList[i]);
-
+                            Console.WriteLine("BodyIndex = " + i + " | BodyTrackingId = " + trackingId + "\n GestureTrackingId = " + gestureDetectorList[i].TrackingId + gestureDetectorList[i]);
                             // if the current body TrackingId changed, update the corresponding gesture detector with the new value
                             if (trackingId != gestureDetectorList[i].TrackingId)
                             {
@@ -420,11 +445,22 @@ namespace KinectServerConsole
                             }
                         }
                     }
-                }                
+
+                    foreach (var gestureDetector in gestureDetectorList)
+                    {
+                        if (gestureDetector.TrackingId == 0)
+                        {
+                            foreach (var gesture in gestureDetector.GestureResults)
+                            {
+                                gesture.UpdateGestureResult(gesture.Name, false, false, 0.0f);
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        static string ConvertStringArrayToStringJoin(string[] array)
+        string ConvertStringArrayToStringJoin(string[] array)
         {
             //
             // Use string Join to concatenate the string elements.
@@ -433,7 +469,7 @@ namespace KinectServerConsole
             return result;
         }
 
-        private static void SendBodyDataCallback(IAsyncResult ar)
+        private void SendBodyDataCallback(IAsyncResult ar)
         {
             WriteDebug("Send Body data completed. [isSendBodyData: " + isSendBodyData + "]");
             //Console.WriteLine(DEBUG_SYMBOL + "Send Body data completed. [isSendBodyData: " + isSendBodyData + "]");
@@ -443,7 +479,7 @@ namespace KinectServerConsole
             }
             catch (SocketException se)
             {
-                Console.WriteLine(se.ToString() + "\n" + ERROR_SYMBOL + "Error code: "+se.SocketErrorCode);
+                Console.WriteLine(se.ToString() + "\n" + ERROR_SYMBOL + "Error code: " + se.SocketErrorCode);
             }
             catch (ObjectDisposedException ode)
             {
@@ -451,121 +487,74 @@ namespace KinectServerConsole
             }
         }
 
-        public static ManualResetEvent allDone = new ManualResetEvent(false);
-
-        [DllImport("Kernel32")]
-        private static extern bool SetConsoleCtrlHandler(EventHandler handler, bool add);
-
-        private delegate bool EventHandler(CtrlType sig);
-        static EventHandler _handler;
-
-        static void WriteDebug(string debugString)
+        private void WriteDebug(string debugString)
         {
             if (debugFlag)
             {
                 Console.WriteLine(DEBUG_SYMBOL + debugString);
             }
         }
-        */
 
-        static void WarningInvalidPort(string arg)
+        public void ShutdownServer()
         {
-            Console.WriteLine();
-            Console.WriteLine("Invalid port: " + arg);
-            Console.WriteLine();
-            Console.WriteLine("     Usage: KinectServerConsole.exe [port_number] [-debug]");
-            Console.WriteLine();
-            Console.WriteLine("Port " + DEFAULT_PORT + " is used if no port is provided.");
+            Console.WriteLine("Shutting down server... ");
+            if (connections != null && connections.Count != 0)
+            {
+                lock (connections)
+                {
+                    for (int i = connections.Count - 1; i >= 0; i--)
+                    {
+                        CloseConnection(connections[i]);
+                    }
+                }
+            }
+
+            if (gestureDetectorList != null && gestureDetectorList.Count != 0)
+            {
+                lock (gestureDetectorList)
+                {
+                    foreach (var gestureDetector in gestureDetectorList)
+                    {
+                        gestureDetector.Dispose();
+                    }
+                }
+            }
+
+            if (serverSocket != null)
+            {
+                serverSocket.Close();
+            }
+
+            if (handlerSocket != null)
+            {
+                handlerSocket.Close();
+            }
+
+            if (_reader != null)
+            {
+                _reader.Dispose();
+            }
+
+            if (_sensor != null)
+            {
+                _sensor.Close();
+            }
+
+            Console.WriteLine("Done!");
+
+            Environment.Exit(0);
         }
 
-        static void WarningInvalidOption(string arg)
+        private bool Handler(CtrlType sig)
         {
-            Console.WriteLine();
-            Console.WriteLine("Invalid option: " + arg);
-            Console.WriteLine();
-            Console.WriteLine("     Usage: KinectServerConsole.exe [port_number] [-debug]");
-            Console.WriteLine();
-            Console.WriteLine("Port " + DEFAULT_PORT + " is used if no port is provided.");
-        }        
-
-        //private static bool Handler(CtrlType sig)
-        //{
-        //    return false;
-        //}
-
-        //[DllImport("Kernel32")]
-        //private static extern bool SetConsoleCtrlHandler(EventHandler handler, bool add);
-
-        //private delegate bool EventHandler(CtrlType sig);
-        //static EventHandler _handler;
-
-        static void Main(string[] args)
-        {
-           if (args == null || args.Length == 0)
-           {
-               serverPort = DEFAULT_PORT;
-           }
-           else if (args.Length == 1 && args[0].Equals("-debug"))
-           {
-               debugFlag = true;
-               serverPort = DEFAULT_PORT;
-           }
-           else if (args.Length > 2)
-           {               
-               Console.WriteLine();
-               Console.WriteLine("     Usage: KinectServerConsole.exe [port_number] [-debug]");
-               return;
-           }
-           else
-           {
-               int portNum;
-               bool isNumber = Int32.TryParse(args[0], out portNum);
-               bool isDebug;
-
-               if (isNumber)
-               {
-                   if (portNum >= 1024 && portNum <= 49151)
-                   {
-                       serverPort = portNum;
-                   }
-                   else
-                   {
-                       WarningInvalidPort(args[0]);
-                       return;
-                   }                        
-               }
-               else
-               {
-                   WarningInvalidPort(args[0]);
-                   return;
-               }
-
-               if (args.Length == 2)
-               {
-                   isDebug = args[1].Equals("-debug");
-
-                   if (isDebug)
-                   {
-                       debugFlag = true;
-                   }
-                   else
-                   {
-                       WarningInvalidOption(args[1]);
-                       return;
-                   }
-               }               
-           }
-
-           KinectServerConsole server = new KinectServerConsole(serverPort, debugFlag);
-           //StartKinect();
-           //StartServer(port);
-
-           // while (true)
-           // {
-           //     allDone.Reset();
-           //     ContinueListen(serverSocket);
-           //     allDone.WaitOne();
-           // }
+            ShutdownServer();
+            return false;
         }
-    }    
+
+        [DllImport("Kernel32")]
+        private static extern bool SetConsoleCtrlHandler(EventHandler handler, bool add);
+
+        private delegate bool EventHandler(CtrlType sig);
+        EventHandler _handler;
+    }
 }

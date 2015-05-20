@@ -14,6 +14,9 @@ namespace KinectServerConsole
         /// <summary> Current confidence value reported by the discrete gesture </summary>
         private float confidence = 0.0f;
 
+        /// <summary> Name of discrete gesture </summary>
+        private string name;
+
         /// <summary> True, if the discrete gesture is currently being detected </summary>
         private bool detected = false;
 
@@ -26,13 +29,30 @@ namespace KinectServerConsole
         /// <param name="bodyIndex">Body Index associated with the current gesture detector</param>
         /// <param name="isTracked">True, if the body is currently tracked</param>
         /// <param name="detected">True, if the gesture is currently detected for the associated body</param>
-        /// <param name="confidence">Confidence value for detection of the 'Seated' gesture</param>
-        public GestureResult(int bodyIndex, bool isTracked, bool detected, float confidence)
+        /// <param name="confidence">Confidence value for detection of the gesture</param>
+        public GestureResult(int bodyIndex, string name, bool isTracked, bool detected, float confidence)
         {
             this.BodyIndex = bodyIndex;
             this.IsTracked = isTracked;
             this.Detected = detected;
             this.Confidence = confidence;
+            this.Name = name;
+        }
+
+        public string Name
+        {
+            get
+            {
+                return this.name;
+            }
+
+            private set
+            {
+                if (this.name != value)
+                {
+                    this.name = value;
+                }
+            }
         }
 
         /// <summary> 
@@ -117,10 +137,11 @@ namespace KinectServerConsole
         /// <param name="isBodyTrackingIdValid">True, if the body associated with the GestureResultView object is still being tracked</param>
         /// <param name="isGestureDetected">True, if the discrete gesture is currently detected for the associated body</param>
         /// <param name="detectionConfidence">Confidence value for detection of the discrete gesture</param>
-        public void UpdateGestureResult(bool isBodyTrackingIdValid, bool isGestureDetected, float detectionConfidence)
+        public void UpdateGestureResult(string name, bool isBodyTrackingIdValid, bool isGestureDetected, float detectionConfidence)
         {
             this.IsTracked = isBodyTrackingIdValid;
             this.Confidence = 0.0f;
+            this.Name = name;
 
             if (!this.IsTracked)
             {
